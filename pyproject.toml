@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowpilot"
+version = "0.1.0"
+description = "FlowPilot: data type-agnostic data curriculum engine for model training."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "FlowPilot Team" }]
+dependencies = []
+
+[project.optional-dependencies]
+tensorflow = ["tensorflow>=2.11,<2.16"]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools]
+packages = ["flow_engine", "flowpilot"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore:The module numpy.dual is deprecated:DeprecationWarning",
+  "ignore:`np.typeDict` is a deprecated alias for `np.sctypeDict`:DeprecationWarning",
+]
