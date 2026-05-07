@@ -1,159 +1,119 @@
 # FlowPilot
 
-FlowPilot is a Pre-ML optimization module for training data scheduling.
-It does not replace your model. It optimizes data order and batch selection before and during training.
+A small execution framework for tick-loop decision systems.
 
-Core goals:
-- reduce training time
-- improve data efficiency
-- reduce convergence steps
-
-> Before you train, we decide what to learn.
-
-## What this module does
-
-Most training pipelines rely on random sampling.
-FlowPilot dynamically selects the next batch based on model state and flow-aware signals.
-
-- difficulty estimation: uncertainty, volatility, novelty, error history
-- strategy selection: uncertainty-first, mixed, easy-to-hard, temporal-flow
-- policy adaptation: bandit-based explore/exploit
-- evidence reporting: baseline-aware KPIs with statistical metrics
-
-## When to use FlowPilot
-
-- large datasets with repeated training cycles
-- time-ordered data such as logs, sensors, and event streams
-- teams where training lead time matters as much as final quality
-
-## Important constraints
-
-- impact depends on dataset, model, and training setup
-- this is not a generic AutoML tool for raw image/text inputs
-- you still need an existing trainable model
-
-## Installation
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Tests](https://img.shields.io/badge/tests-24%20passing-brightgreen)]()
+[![Deps](https://img.shields.io/badge/dependencies-zero-lightgrey)]()
 
 ```bash
-pip install .
+pip install -e ".[dev]"
 ```
 
-Optional TensorFlow integration:
+---
 
-```bash
-pip install ".[tensorflow]"
-```
+## Overview
 
-Editable install (development mode):
+Game bots, simulation controllers, robotics loops — anything that runs
+on a clock and asks *"what next?"* tends to end up with the same
+shape: gather observations, predict, score, pick. FlowPilot pins that
+shape down with two pieces: **Node** and **Pipeline**. It is not a
+neural-net library. It is the layer above your model — learned policy
+or hand-tuned rules — that organises the per-tick decision flow.
 
-```bash
-pip install -e .
-```
+Pure Python, zero runtime dependencies.
 
-## Quick start (Convenience API)
+## Three core contracts
 
 ```python
 import flowpilot as fp
 
-data = [
-    {
-        "sample_id": "s1",
-        "events": [
-            {"timestamp": 0, "entity_id": "u1", "features": {"value": 1.0}},
-            {"timestamp": 1, "entity_id": "u1", "features": {"value": 1.8}},
-        ],
-        "label": 1,
-    }
-]
-
-result = fp.run(
-    data=data,
-    mode="auto",
-    target="classification",
-    baseline_strategy="random",
-    runs=5,
-    seed=42,
+ctx  = fp.RunContext({"x": 1.0})            # dotted keys + copy-on-write
+node = fp.Node(                              # pure op with declared I/O
+    name="square",
+    inputs=("x",), outputs=("y",),
+    compute=lambda x: x * x,
 )
-
-print(result.kpi.training_time_reduction_pct)
-print(result.kpi.data_efficiency_gain_pct)
-print(result.kpi.convergence_step_reduction_x)
-print(result.statistics["time_reduction_ci95"])
-print(result.statistics["time_reduction_p_value"])
+pipe = node >> node                          # define graph (lazy)
+pipe.run(ctx).get("y")                       # execution only on .run()
 ```
 
-## Recommended usage (Object API)
+- `RunContext` — an immutable-ish key/value store with dotted-path
+  access. Every write returns a new object; `ctx.set("a.b.c", v)`
+  does not damage sibling keys like `a.b.d`.
+- `Node` — a frozen dataclass declaring `name / inputs / outputs /
+  compute`. `forward(ctx)` reads the input keys, calls `compute`,
+  validates the output shape, and returns a new context. Mismatches
+  raise `NodeOutputError`.
+- `Pipeline` — a sequential DAG built by chaining nodes with `>>`.
+  Execution only happens when `.run(ctx)` is called.
+
+## Quickstart
 
 ```python
 import flowpilot as fp
+from flowpilot.ops import distance
 
-pilot = fp.FlowPilot(encoder=fp.TimeSeriesEncoder())
-pilot.prepare(data)
-batch = pilot.select_next(batch_size=32)
-train_logs = pilot.train(steps=10, batch_size=32)
-factors = pilot.explain("s1")
+observe = fp.Node("observe", ("raw",),
+                  ("self.pos", "target.pos"),
+                  lambda r: (r["me"], r["target"]))
+
+score   = fp.Node("score", ("self.pos", "target.pos"),
+                  ("score",),
+                  lambda a, b: -distance.euclidean(a, b))
+
+decide  = fp.Node("decide", ("score",),
+                  ("decision",),
+                  lambda s: fp.Decision("approach", s))
+
+agent = observe >> score >> decide
+
+ctx = agent.run(fp.RunContext({"raw": {"me": (0, 0), "target": (3, 4)}}))
+ctx.get("decision")     # Decision(kind='approach', value=-5.0)
 ```
 
-## DataLoader-style integration
+When you need time to pass, wrap the pipeline in a `TickLoop`. It
+injects `runtime.tick / time / dt` into the context every tick, and
+its `Scheduler` lets sub-pipelines run at different rates.
 
 ```python
-import flowpilot as fp
-
-pilot = fp.FlowPilot()
-policy = fp.FlowBatchPolicy(pilot=pilot, samples=data)
-
-batch = policy.next_batch(batch_size=32)
-policy.on_step_end(fp.StepSignal(loss=0.42, accuracy=0.81, grad_norm=1.7))
+loop = fp.TickLoop(agent, dt=0.05)
+loop.scheduler.add("planner", every=10, step=replan.run)
+ctx  = loop.run(fp.RunContext({"raw": obs}), ticks=240)
 ```
 
-## Benchmark and release gate
+## Module layout
 
-```python
-import flowpilot as fp
-
-pilot = fp.FlowPilot()
-harness = fp.BenchmarkHarness(runs=5, seed=42)
-results = harness.run(pilot=pilot, data=data, epochs=1, batch_size=32)
-
-for r in results:
-    print(r.baseline, r.kpi, r.statistics["time_reduction_ci95"])
-    print("gate:", fp.BenchmarkHarness.release_gate_passed(r))
+```
+flowpilot/
+├── core/      RunContext, Decision, Block
+├── ops/       distance, angle, normalize, scoring, collision, intercept
+├── graph/     Node, Pipeline, NodeOutputError
+└── runtime/   TickCache, Clock, Scheduler, TickLoop
 ```
 
-Baseline suite:
-- `random`
-- `uncertainty_only`
-- `curriculum_only`
+`ops/` contains stateless pure functions only. Mutable state is
+allowed exclusively inside `runtime/`.
 
-Reported statistics:
-- standard deviation (`std`)
-- 95% confidence interval (`ci95`)
-- paired significance approximation (`p_value`)
-- reproducibility manifest (`seed_list`, `config_hash`, `dataset_fingerprint`)
+## Design rules
 
-## Encoder plugins
+- **`compute` is a pure function.** State belongs in `runtime/`.
+- **Immutable dataflow:** `ctx → forward(ctx) → new_ctx`.
+- **Explicit contracts.** Inputs and outputs are declared and checked
+  at runtime.
+- **Sequential DAG only.** Branching, parallelism, and graph
+  optimisation are deferred until they are actually needed.
+- **README before code.** How users experience the framework matters
+  more than its internals.
 
-- `fp.TimeSeriesEncoder()`
-- `fp.EventLogEncoder()`
+## Install · Test
 
-You can inject a domain-specific encoder via `FlowPilot(encoder=...)`.
-
-## TensorFlow integration
-
-```python
-from flow_engine.flow_tensorflow import CurriculumCallback
-from flow_engine.flow_trainer import FlowTrainer
-
-trainer = FlowTrainer()
-callback = CurriculumCallback(trainer, monitor="loss", update_every_n_batches=1)
-
-model.fit(x_train, y_train, epochs=10, callbacks=[callback])
-print(callback.get_curriculum_state())
+```bash
+pip install -e ".[dev]"
+pytest -q                       # 24 tests: core / ops / graph / runtime / integration
 ```
 
-## Version
+## License
 
-```python
-import flowpilot as fp
-print(fp.__version__)
-```
+MIT.

@@ -4,22 +4,59 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flowpilot"
-version = "0.1.0"
-description = "FlowPilot: data type-agnostic data curriculum engine for model training."
+version = "0.3.0"
+description = "FlowPilot: execution-oriented framework for tick-loop decision graphs."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
+license = { text = "MIT" }
 authors = [{ name = "FlowPilot Team" }]
+keywords = [
+  "tick-loop",
+  "controller",
+  "decision",
+  "agent",
+  "fsm",
+  "robotics",
+  "game-ai",
+  "multi-agent",
+  "symbolic-controller",
+  "execution-graph",
+  "dataflow",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
 dependencies = []
 
 [project.optional-dependencies]
-tensorflow = ["tensorflow>=2.11,<2.16"]
 dev = ["pytest>=7.0"]
 
+[project.urls]
+Homepage = "https://github.com/flowpilot/flowpilot"
+Documentation = "https://github.com/flowpilot/flowpilot#readme"
+Issues = "https://github.com/flowpilot/flowpilot/issues"
+
 [tool.setuptools]
-packages = ["flow_engine", "flowpilot"]
+packages = [
+  "flowpilot",
+  "flowpilot.core",
+  "flowpilot.graph",
+  "flowpilot.ops",
+  "flowpilot.runtime",
+]
 
 [tool.pytest.ini_options]
-filterwarnings = [
-  "ignore:The module numpy.dual is deprecated:DeprecationWarning",
-  "ignore:`np.typeDict` is a deprecated alias for `np.sctypeDict`:DeprecationWarning",
-]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
