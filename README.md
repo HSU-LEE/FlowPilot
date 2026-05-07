@@ -20,7 +20,7 @@ FlowPilot dynamically selects the next batch based on model state and flow-aware
 - policy adaptation: bandit-based explore/exploit
 - evidence reporting: baseline-aware KPIs with statistical metrics
 
-## When to use FlowPilot
+## When to use FlowPilot. 
 
 - large datasets with repeated training cycles
 - time-ordered data such as logs, sensors, and event streams
